@@ -29,51 +29,7 @@ app = Flask(__name__)
 model = None
 prev_image_array = None
 
-def my_load_model(prefix):
-    try:
-        print('trying to load model from hd5 file')
-        m = load_model(prefix+'.hd5')
-        model_read_successful = True
-        weight_read_successful = True
-    except :
-        print(sys.exc_info())
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-        traceback.print_tb(exc_traceback)
-        print('loading model from hd5 failed')
-        model_read_successful = False
-        weight_read_successful = False
-    if not model_read_successful:
-        try:
-            print('trying to load model from json file')
-            with open(prefix+'.json','r') as f:
-                m = model_from_json(f.read())
-            model_read_successful = True
-        except :
-            print(sys.exc_info())
-            print('loading model from json failed')
-    if not model_read_successful:
-        try:
-            print('trying to load model from yaml file')
-            with open(prefix+'.yml','r') as f:
-                m = model_from_yaml(f.read())
-            model_read_successful = True
-        except:
-            print(sys.exc_info())
-            print('loading model from yaml failed')
-    if model_read_successful and not weight_read_successful:
-        try:
-            print('loading weights from _weights.hd5 file')
-            m.load_weights(prefix+'_weights.hd5')
-            weight_read_successful = True
-        except:
-            print(sys.exc_info())
-            print('loading weights from _weights.hdf file failed')
-            return None
-    if model_read_successful and weight_read_successful:
-        return m
-    else:
-        return None
-
+#create model
 def Lenet():
   height = 160
   width = 320
@@ -93,10 +49,12 @@ def Lenet():
   model.compile(loss='mse',optimizer='adam')
   return model
 
-def hacky_load_model(prefix):
+# load weights 
+def hacky_load_model(model_weights_fname):
     m = Lenet()
-    m.load_weights(prefix+'.hd5')
+    m.load_weights(model_weights_fname)
     return m
+
 class SimplePIController:
     def __init__(self, Kp, Ki):
         self.Kp = Kp

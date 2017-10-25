@@ -22,7 +22,8 @@ def _float_feature(value):
 
 def _bytes_feature(value):
   return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
-    
+
+# convert data to a serialized TFExample    
 def toTFExample(row):
   img = lambda x: _bytes_feature(readImage(x).tostring())
   flt = lambda x: _float_feature(x)
@@ -36,6 +37,7 @@ def toTFExample(row):
   example = tf.train.Example(features=tf.train.Features(feature=feature))
   return example.SerializeToString()
 
+# parse the TFExample back
 DrivingFrame = collections.namedtuple('DrivingFrame', 'center left right steering throttle brake speed')
 def fromTFExample(rcrd):
   ex = tf.train.Example()
@@ -57,6 +59,7 @@ def readCsv(csvfile,frac=1.0):
     df = pd.read_csv(gf).sample(frac=frac)
   return df
   
+# read the data and save as a sstable file
 def datasets_to_sstable_shuffled():
   data_root = '/usr/local/google/home/sunilsn/carnd/t1/p3/collect_data/'
   sstable_path = '/usr/local/google/home/sunilsn/carnd/t1/p3/collect_data/allfeatures.sstable'

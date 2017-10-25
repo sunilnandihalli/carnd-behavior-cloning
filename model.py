@@ -4,7 +4,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
+# google specific imports
 import google3
 from google3.pyglib import gfile
 from google3.util.textprogressbar import pybar
@@ -54,12 +54,6 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('master', 'local',
                            """BNS name of the TensorFlow runtime to use.""")
 
-flags.DEFINE_string('output_file', 'mandelbrot.png',
-                           """Where to write output.""")
-
-flags.DEFINE_integer('num_steps', 100,
-                            """Number of steps to run.""")
-
 def _int64_feature(value):
   return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
 
@@ -78,7 +72,7 @@ def tfrecordwriter(tfrecords_path):
     sys.stdout.flush()
 
 
-
+# read from google file system
 @contextmanager
 def gfsread(name):
   tmpdir = tempfile.mkdtemp()
@@ -86,6 +80,7 @@ def gfsread(name):
   gfile.Copy(name,tmpfname)
   yield tmpfname
 
+# write to google file system
 @contextmanager
 def gfs(name,suffix='.tmpdata'):
   tmp_file = tempfile.NamedTemporaryFile(mode='w',suffix=suffix)
@@ -93,6 +88,10 @@ def gfs(name,suffix='.tmpdata'):
   yield tmp_file.name
   gfile.Copy(tmp_file.name,name,overwrite=True)
 
+# create the model. The model is almost identical to the LeNet model except for
+# the introduction of the cropping and doubling of the number of nodes in the first fully
+# connected layer to 240 and adding a dropout with probability of 0.5. Since this is 
+# regression problem we use mean-squared-error and 'adam' optimizer
 def Lenet():
   height = 160
   width = 320
@@ -130,6 +129,8 @@ def fromTFExampleMoreFeatures(rcrd):
   brake = toflt('brake'),
   speed = toflt('speed'))
 
+#create the generators necessary to fit the model. Both generators for validation and training are returned from this
+# function. It also returns the number of steps that needs to be taken on each generator.
 def train_validate_generators(sstable_path,cross_validation_ratio=0.1,batch_size=256):
   mprint('train_validate_generators')
   table = sstable.SSTable(sstable_path)
@@ -147,6 +148,8 @@ def train_validate_generators(sstable_path,cross_validation_ratio=0.1,batch_size
   vgen = valid_generator(sstable_path,batch_size,cv_start_key,None,None)
   return tgen,num_train_steps*3,vgen,num_valid_steps*3
 
+#example_generator parses every record and generates training examples for center
+# left and right images
 def example_generator(sstable_path,start,stop,start_offset,cycle):
   table = sstable.SSTable(sstable_path)
   while True:
@@ -159,9 +162,12 @@ def example_generator(sstable_path,start,stop,start_offset,cycle):
       mprint('finished non-cyclic example generator')
       break
 
+# a function to weight each examples. An attempt was made to use a higher weight for examples with non-zero
+# steering angles. However, that degraded the performance.
 def weight_fn(batch_labels):
   return np.ones_like(np.squeeze(batch_labels)) #-0.5+2/(1+np.exp((-1.0/3)*np.square(np.squeeze(batch_labels))))
 
+# generate training examples
 def train_generator(sstable_path,batch_size,reject_prob,start,stop,start_offset):
   mprint('train_generator')
   height = 160
@@ -183,6 +189,7 @@ def train_generator(sstable_path,batch_size,reject_prob,start,stop,start_offset)
       yield batch_features,batch_labels,weight_fn(batch_labels)
       curid=0
 
+# generate validation examples
 def valid_generator(sstable_path,batch_size,start,stop,start_offset):
   mprint('valid_generator')
   height = 160
@@ -201,22 +208,13 @@ def valid_generator(sstable_path,batch_size,start,stop,start_offset):
     if curid!=0:
       yield batch_features[0:curid,:,:,:],batch_labels[0:curid,:],weight_fn(batch_labels)
 
+# save the model weights to google-file-system.
 def save_model(m,history_object,path_prefix):
-  if False:
-    with gfs(path_prefix+'.hd5') as fname1:
-      m.save(fname1)
   with gfs(path_prefix+'_weights.hd5') as fname2:
     m.save_weights(fname2)
-  if False:
-    with gfile.FastGFile(path_prefix+'.json', 'w') as f1:
-      mprint('writing model json file')
-      f1.write(m.to_json())
-  if False:
-    with gfile.FastGFile(path_prefix+'.yml','w') as f2:
-      mprint('writing model to yaml file')
-      f2.write(m.to_yaml())
   plot_history(history_object,path_prefix)
 
+# modify the CSVLogger callback from keras to be able to write to google-file-system
 class CSVLogger(kcb.CSVLogger):
   def __init__(self,filename):
     kcb.CSVLogger.__init__(self,filename)
@@ -224,6 +222,7 @@ class CSVLogger(kcb.CSVLogger):
   def on_train_begin(self, logs=None):
     self.csv_file = gfile.FastGFile(self.filename, 'w' + self.file_flags)
 
+# modify the ModelCheckpoint callback from keras to be able to write to google-file-system.
 class ModelCheckpoint(kcb.Callback):
   """keras.callback.ModelCheckPoint
   """
